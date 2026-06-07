@@ -1,0 +1,10 @@
+# ESP-IDF build output
+build/
+sdkconfig
+sdkconfig.old
+
+# VS Code
+.vscode/
+
+# macOS
+.DS_Store

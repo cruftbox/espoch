@@ -1,0 +1,41 @@
+# ESPoch — sdkconfig defaults for Waveshare ESP32-S3-Touch-AMOLED-2.06
+#
+# These are applied on first build (idf.py set-target esp32s3).
+# Any value can be overridden by running: idf.py menuconfig
+
+# --- Chip ---
+CONFIG_IDF_TARGET="esp32s3"
+
+# --- Flash ---
+# 32 MB QIO flash on this board
+CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+
+# --- PSRAM ---
+# 8 MB Octal PSRAM (ESP32-S3R8)
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# --- CPU ---
+CONFIG_ESP32S3_DEFAULT_CPU_FREQ_240=y
+
+# --- USB ---
+# Use the onboard USB-Serial-JTAG for flashing and console
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# --- Logging ---
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# --- FreeRTOS ---
+CONFIG_FREERTOS_HZ=1000
+
+# --- Bluetooth ---
+# Enabled — needed for Stage 5 (ANCS + AVRCP with iPhone)
+CONFIG_BT_ENABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+
+# --- WiFi ---
+# Enabled — needed for Stage 3 (NTP + OTA + web config)
+CONFIG_ESP_WIFI_ENABLED=y
