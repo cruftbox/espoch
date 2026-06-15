@@ -28,6 +28,7 @@
 #include "esp_log.h"
 #include "bsp/esp-bsp.h"
 #include "lvgl.h"
+#include "axp2101.h"
 
 static const char *TAG = "espoch";
 
@@ -45,9 +46,12 @@ static lv_obj_t *s_lbl_date;
 static lv_obj_t *s_lbl_steps;
 static lv_obj_t *s_lbl_batt;
 
-/* Placeholder values until the real sensors are wired in. */
+/* Steps are still a placeholder until Stage 4 (QMI8658 IMU). */
 static int s_steps   = 2847;   /* TODO Stage 4: read from QMI8658 IMU */
-static int s_battery = 73;     /* TODO: read from AXP2101 over I2C     */
+
+/* Battery is read live from the AXP2101; this caches the last good value in
+ * case a read fails. */
+static int s_battery = 0;
 
 static uint32_t batt_color(int pct)
 {
@@ -79,7 +83,16 @@ static void tick_cb(lv_timer_t *timer)
 
     lv_label_set_text_fmt(s_lbl_steps, "STEPS   %d,%03d", s_steps / 1000, s_steps % 1000);
 
-    lv_label_set_text_fmt(s_lbl_batt, "BATT   %d%%", s_battery);
+    /* Live battery + charging status from the AXP2101. */
+    int pct = axp2101_battery_percent();
+    if (pct >= 0) {
+        s_battery = pct;
+    }
+    if (axp2101_is_charging()) {
+        lv_label_set_text_fmt(s_lbl_batt, "BATT   %d%%  CHG", s_battery);
+    } else {
+        lv_label_set_text_fmt(s_lbl_batt, "BATT   %d%%", s_battery);
+    }
     lv_obj_set_style_text_color(s_lbl_batt, lv_color_hex(batt_color(s_battery)), 0);
 }
 
@@ -128,6 +141,10 @@ void app_main(void)
     seed_clock();
 
     bsp_display_start();                  /* brings up panel, touch, LVGL task */
+
+    if (!axp2101_init()) {                /* battery / charging readout (read-only) */
+        ESP_LOGW(TAG, "AXP2101 init failed — battery readout disabled");
+    }
 
     bsp_display_lock(0);                  /* LVGL is not thread-safe; take mutex */
     build_watch_face();

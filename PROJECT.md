@@ -100,8 +100,10 @@ $env:IDF_PYTHON_ENV_PATH='C:\Espressif\tools\python\v6.0.1\venv'
 | Path | Purpose |
 | ---- | ------- |
 | `main/main.c` | App entry + the LVGL watch-face UI |
+| `main/axp2101.cpp` / `axp2101.h` | Read-only AXP2101 battery/charging readout (C wrapper over XPowersLib) |
 | `main/idf_component.yml` | Managed dependencies (LVGL, `espressif/usb`) |
 | `components/esp32_s3_touch_amoled_2_06/` | **Vendored, patched** Waveshare BSP (see notes below) |
+| `components/XPowersLib/` | Vendored AXP2101 power-management library (battery/charge readout) |
 | `sdkconfig.defaults` | Chip / PSRAM / display / LVGL configuration |
 | `dependencies.lock` | Pins exact dependency versions (committed for reproducibility) |
 | `managed_components/` | Auto-downloaded deps — **git-ignored**, rebuilt from the lock file |
@@ -132,6 +134,23 @@ old IDF, the BSP is **vendored** as a local component at
 
 > If the BSP is ever re-downloaded fresh from the registry, these patches must be re-applied.
 > That's exactly why it's vendored locally instead of left as a managed dependency.
+
+---
+
+## Power / Battery (AXP2101)
+
+Battery level and charging status come from the **AXP2101** PMU, read over the BSP's shared I²C
+bus (SDA 15 / SCL 14, address `0x34`) using the vendored **XPowersLib** (`components/XPowersLib`).
+The glue is `main/axp2101.cpp` (a small C wrapper), called once from `app_main()`.
+
+> **Safety:** the init is deliberately **read-only** — it enables the battery/VBUS measurement
+> ADCs and disables the TS-pin temperature check (this board has no battery thermistor; leaving
+> it on blocks charging), but it does **not** touch any DC/LDO power rails. The rails already
+> power the CPU and display correctly at boot, so reconfiguring them risks cutting power
+> mid-run. Do not add rail enable/disable calls without verifying the board's rail map.
+
+A full battery on USB shows `charging = 0` (charge complete) — that is correct, not a fault.
+The on-screen `CHG` marker appears only while actually charging.
 
 ---
 
@@ -204,8 +223,8 @@ Note: Skip 30 seconds is a best-effort feature — Apple's AMS (Apple Media Serv
 
 - Digital time display (large, amber) — live ticking `HH:MM:SS`
 - Date display (day + full date)
-- Battery percentage with color indicator — **layout + color logic done; value is a
-  placeholder until the AXP2101 is wired in (planned with Stage 3)**
+- Battery percentage with color indicator — **live, read from the AXP2101 via XPowersLib
+  over I²C; shows a `CHG` indicator while charging** (green/yellow/red by level)
 - Step count display — **placeholder until Stage 4 (QMI8658 IMU)**
 - Amber on black, dashboard layout
 - Optimized for outdoor readability
