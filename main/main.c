@@ -27,6 +27,7 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "nvs_flash.h"
+#include "esp_app_desc.h"
 #include "bsp/esp-bsp.h"
 #include "lvgl.h"
 #include "axp2101.h"
@@ -52,6 +53,7 @@ static lv_obj_t *s_lbl_date;
 static lv_obj_t *s_lbl_steps;
 static lv_obj_t *s_lbl_batt;
 static lv_obj_t *s_lbl_wifi;
+static lv_obj_t *s_lbl_ver;
 
 /* Steps are still a placeholder until Stage 4 (QMI8658 IMU). */
 static int s_steps   = 2847;   /* TODO Stage 4: read from QMI8658 IMU */
@@ -171,7 +173,10 @@ static void build_watch_face(void)
     s_lbl_time  = make_label(scr, &lv_font_montserrat_48, COLOR_TIME,  215);  /* time is the center */
     s_lbl_steps = make_label(scr, &lv_font_montserrat_28, COLOR_DIM,   335);
     s_lbl_batt  = make_label(scr, &lv_font_montserrat_28, COLOR_DIM,   395);
+    s_lbl_ver   = make_label(scr, &lv_font_montserrat_20, COLOR_DIM,   460);
     lv_label_set_text(s_lbl_wifi, "");   /* WiFi symbol appears once connected */
+    /* Firmware version (from version.txt) — handy, and shows OTA updates landing. */
+    lv_label_set_text_fmt(s_lbl_ver, "v%s", esp_app_get_description()->version);
 
     tick_cb(NULL);                       /* paint immediately, don't wait 1s */
     lv_timer_create(tick_cb, 1000, NULL);
