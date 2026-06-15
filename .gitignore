@@ -3,6 +3,10 @@ build/
 sdkconfig
 sdkconfig.old
 
+# Auto-downloaded managed components — reproduced from dependencies.lock on build.
+# (The patched Waveshare BSP is vendored under components/ and IS tracked.)
+managed_components/
+
 # VS Code
 .vscode/
 

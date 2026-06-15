@@ -1,0 +1,19 @@
+## Managed components for ESPoch.
+## ESP-IDF's component manager downloads these automatically on the next build.
+dependencies:
+  idf: ">=5.3"
+
+  # NOTE: The Waveshare board support package is NOT listed here. It lives as a
+  # local, patched component in ../components/esp32_s3_touch_amoled_2_06 because
+  # the published v1.0.7 needs fixes to build on ESP-IDF v6 (split driver
+  # components + a function-signature bug). The local copy still declares its own
+  # sub-dependencies (SH8601 display, FT3168 touch, esp_lvgl_port), which the
+  # component manager resolves from its idf_component.yml.
+
+  # Graphics library (v9 API). Needs >=9.3 because esp_lvgl_port 2.8.0
+  # references LV_COLOR_FORMAT_RGB565_SWAPPED, added in LVGL 9.3.
+  lvgl/lvgl: ">=9.3,<10"
+
+  # ESP-IDF v6 removed the built-in 'usb' component; the Waveshare BSP still
+  # lists it as a requirement, so pull it from the component manager.
+  espressif/usb: "*"
