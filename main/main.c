@@ -26,11 +26,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include "nvs_flash.h"
 #include "bsp/esp-bsp.h"
 #include "lvgl.h"
 #include "axp2101.h"
 #include "net_time.h"
 #include "watch_display.h"
+#include "rtc_manager.h"
+#include "timezone_manager.h"
 
 static const char *TAG = "espoch";
 
@@ -173,18 +176,25 @@ static void build_watch_face(void)
     lv_timer_create(tick_cb, 1000, NULL);
 }
 
-/* Set the timezone and seed the clock with a plausible value so the watch shows
- * a sensible time immediately. Once WiFi connects, NTP overwrites it with the
- * real time (displayed in the timezone set here).
- *
- * TZ = US Pacific with automatic daylight saving (PST/PDT).
- * 1781433720 = 2026-06-14 10:42:00 UTC, just a placeholder until NTP syncs. */
-static void seed_clock(void)
+/* Bring up the clock: timezone + hardware RTC. The PCF85063 RTC keeps time
+ * across reboots, so the watch shows the right time immediately on boot (once
+ * NTP has run at least once), even before WiFi reconnects. NTP later writes the
+ * accurate time back to the RTC (see net_time.c). */
+static void clock_init(void)
 {
-    setenv("TZ", "PST8PDT,M3.2.0,M11.1.0", 1);
-    tzset();
-    struct timeval tv = { .tv_sec = 1781433720, .tv_usec = 0 };
-    settimeofday(&tv, NULL);
+    timezone_manager_init();
+    /* No on-device timezone picker yet (that needs the app/menu framework), so
+     * force US Pacific with daylight saving until then. Index 4 = "US Pacific". */
+    if (timezone_manager_get_selected_index() != 4) {
+        timezone_manager_set_index(4);
+    }
+    if (!timezone_manager_dst_enabled()) {
+        timezone_manager_set_dst_enabled(true);   /* PDT in summer, PST in winter */
+    }
+
+    rtc_manager_init();
+    rtc_manager_ensure_time_set();   /* write a sane default if the RTC was never set */
+    rtc_manager_sync_to_system();    /* load RTC time into the ESP32 system clock */
 }
 
 void app_main(void)
@@ -192,7 +202,14 @@ void app_main(void)
     ESP_LOGI(TAG, "ESPoch booting...");
     ESP_LOGI(TAG, "Stage 2 — Watch Face");
 
-    seed_clock();
+    /* NVS is needed by the timezone store (and WiFi). */
+    esp_err_t nvs = nvs_flash_init();
+    if (nvs == ESP_ERR_NVS_NO_FREE_PAGES || nvs == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        nvs_flash_erase();
+        nvs_flash_init();
+    }
+
+    clock_init();
 
     /* QSPI IO-path display (Ben Brown's watch-os) — proper flush with retries +
      * 2-pixel rounding, replacing the BSP's broken RGB flush path. */

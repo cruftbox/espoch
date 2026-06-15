@@ -17,3 +17,7 @@ dependencies:
   # ESP-IDF v6 removed the built-in 'usb' component; the Waveshare BSP still
   # lists it as a requirement, so pull it from the component manager.
   espressif/usb: "*"
+
+  # NOTE: waveshare/pcf85063a (the RTC driver) is NOT listed here. It is vendored
+  # and patched at ../components/pcf85063a (its REQUIRES needs esp_driver_i2c for
+  # the v6 driver split), same approach as the BSP.

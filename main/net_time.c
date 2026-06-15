@@ -19,6 +19,7 @@
 #include "nvs_flash.h"
 
 #include "wifi_secrets.h"
+#include "rtc_manager.h"
 
 static const char *TAG = "net_time";
 
@@ -36,6 +37,7 @@ static void on_time_sync(struct timeval *tv)
 {
     (void)tv;
     ESP_LOGI(TAG, "system time synced from NTP");
+    rtc_manager_write_from_system();   /* persist the accurate time to the hardware RTC */
 }
 
 static void event_handler(void *arg, esp_event_base_t base, int32_t id, void *data)
