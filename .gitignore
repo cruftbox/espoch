@@ -15,3 +15,6 @@ managed_components/
 
 # WiFi credentials — keep the password off GitHub. Use wifi_secrets.h.example.
 main/wifi_secrets.h
+
+# Personal, machine-specific Claude Code permissions (absolute install paths).
+.claude/settings.local.json
