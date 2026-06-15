@@ -30,6 +30,7 @@
 #include "lvgl.h"
 #include "axp2101.h"
 #include "net_time.h"
+#include "watch_display.h"
 
 static const char *TAG = "espoch";
 
@@ -62,10 +63,23 @@ static uint32_t batt_color(int pct)
     return COLOR_BATT_LO;
 }
 
-/* Runs once per second inside the LVGL task (mutex already held). */
+/* Runs once per second inside the LVGL task (mutex already held).
+ *
+ * Each field is only re-rendered when its value actually changes. On this panel,
+ * redrawing every label every second makes adjacent redraws interfere (ghosting
+ * / one row clipping the next), so we touch a label only when needed — usually
+ * just the time. */
 static void tick_cb(lv_timer_t *timer)
 {
     (void)timer;
+
+    static char prev_time[16] = "";
+    static char prev_day[16]  = "";
+    static char prev_date[24] = "";
+    static int  prev_steps    = -1;
+    static int  prev_batt     = -1;
+    static int  prev_charging = -1;
+    static int  prev_wifi     = -1;
 
     time_t now;
     struct tm t;
@@ -74,40 +88,67 @@ static void tick_cb(lv_timer_t *timer)
 
     char buf[40];
 
-    strftime(buf, sizeof(buf), "%H:%M:%S", &t);
-    lv_label_set_text(s_lbl_time, buf);
+    /* 12-hour time, no leading zero, with AM/PM (e.g. "1:11:18 PM"). */
+    int hour12 = t.tm_hour % 12;
+    if (hour12 == 0) {
+        hour12 = 12;
+    }
+    snprintf(buf, sizeof(buf), "%d:%02d:%02d %s",
+             hour12, t.tm_min, t.tm_sec, t.tm_hour < 12 ? "AM" : "PM");
+    if (strcmp(buf, prev_time) != 0) {
+        lv_label_set_text(s_lbl_time, buf);
+        strcpy(prev_time, buf);
+    }
 
     strftime(buf, sizeof(buf), "%A", &t);            /* e.g. "Monday" */
-    lv_label_set_text(s_lbl_day, buf);
+    if (strcmp(buf, prev_day) != 0) {
+        lv_label_set_text(s_lbl_day, buf);
+        strcpy(prev_day, buf);
+    }
 
-    strftime(buf, sizeof(buf), "%B %e, %Y", &t);     /* e.g. "June 14, 2026" */
-    lv_label_set_text(s_lbl_date, buf);
+    strftime(buf, sizeof(buf), "%B %e, %Y", &t);     /* e.g. "June 15, 2026" */
+    if (strcmp(buf, prev_date) != 0) {
+        lv_label_set_text(s_lbl_date, buf);
+        strcpy(prev_date, buf);
+    }
 
-    lv_label_set_text_fmt(s_lbl_steps, "STEPS   %d,%03d", s_steps / 1000, s_steps % 1000);
+    if (s_steps != prev_steps) {
+        lv_label_set_text_fmt(s_lbl_steps, "STEPS   %d,%03d", s_steps / 1000, s_steps % 1000);
+        prev_steps = s_steps;
+    }
 
     /* Live battery + charging status from the AXP2101. */
     int pct = axp2101_battery_percent();
     if (pct >= 0) {
         s_battery = pct;
     }
-    if (axp2101_is_charging()) {
-        lv_label_set_text_fmt(s_lbl_batt, "BATT   %d%%  CHG", s_battery);
-    } else {
-        lv_label_set_text_fmt(s_lbl_batt, "BATT   %d%%", s_battery);
+    int charging = axp2101_is_charging() ? 1 : 0;
+    if (s_battery != prev_batt || charging != prev_charging) {
+        if (charging) {
+            lv_label_set_text_fmt(s_lbl_batt, "BATT   %d%% " LV_SYMBOL_CHARGE, s_battery);
+        } else {
+            lv_label_set_text_fmt(s_lbl_batt, "BATT   %d%%", s_battery);
+        }
+        lv_obj_set_style_text_color(s_lbl_batt, lv_color_hex(batt_color(s_battery)), 0);
+        prev_batt = s_battery;
+        prev_charging = charging;
     }
-    lv_obj_set_style_text_color(s_lbl_batt, lv_color_hex(batt_color(s_battery)), 0);
 
     /* WiFi symbol shows only while connected. */
-    lv_label_set_text(s_lbl_wifi, net_time_is_connected() ? LV_SYMBOL_WIFI : "");
+    int wifi = net_time_is_connected() ? 1 : 0;
+    if (wifi != prev_wifi) {
+        lv_label_set_text(s_lbl_wifi, wifi ? LV_SYMBOL_WIFI : "");
+        prev_wifi = wifi;
+    }
 }
 
 static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font,
-                            uint32_t color, lv_align_t align, int y)
+                            uint32_t color, int y)
 {
     lv_obj_t *lbl = lv_label_create(parent);
     lv_obj_set_style_text_font(lbl, font, 0);
     lv_obj_set_style_text_color(lbl, lv_color_hex(color), 0);
-    lv_obj_align(lbl, align, 0, y);
+    lv_obj_align(lbl, LV_ALIGN_TOP_MID, 0, y);
     return lbl;
 }
 
@@ -117,19 +158,16 @@ static void build_watch_face(void)
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
 
-    /* 410 x 502 portrait. Stacked top-to-bottom per the dashboard mock. */
-    s_lbl_time  = make_label(scr, &lv_font_montserrat_48, COLOR_TIME, LV_ALIGN_TOP_MID,  70);
-    s_lbl_day   = make_label(scr, &lv_font_montserrat_28, COLOR_DIM,  LV_ALIGN_TOP_MID, 160);
-    s_lbl_date  = make_label(scr, &lv_font_montserrat_28, COLOR_DIM,  LV_ALIGN_TOP_MID, 205);
-    s_lbl_steps = make_label(scr, &lv_font_montserrat_28, COLOR_DIM,  LV_ALIGN_TOP_MID, 310);
-    s_lbl_batt  = make_label(scr, &lv_font_montserrat_28, COLOR_DIM,  LV_ALIGN_TOP_MID, 370);
-
-    /* WiFi status symbol, top-right corner; empty until connected. */
-    s_lbl_wifi = lv_label_create(scr);
-    lv_obj_set_style_text_font(s_lbl_wifi, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(s_lbl_wifi, lv_color_hex(COLOR_DIM), 0);
-    lv_obj_align(s_lbl_wifi, LV_ALIGN_TOP_RIGHT, -16, 16);
-    lv_label_set_text(s_lbl_wifi, "");
+    /* 410 x 502 portrait. Stacked top-to-bottom per the dashboard mock, with a
+     * WiFi status symbol at the very top. Generous vertical gaps so no row can
+     * touch the next. */
+    s_lbl_wifi  = make_label(scr, &lv_font_montserrat_28, COLOR_TIME,   18);
+    s_lbl_day   = make_label(scr, &lv_font_montserrat_28, COLOR_DIM,    70);  /* day + date moved */
+    s_lbl_date  = make_label(scr, &lv_font_montserrat_28, COLOR_DIM,   112);  /* up to the top      */
+    s_lbl_time  = make_label(scr, &lv_font_montserrat_48, COLOR_TIME,  215);  /* time is the center */
+    s_lbl_steps = make_label(scr, &lv_font_montserrat_28, COLOR_DIM,   335);
+    s_lbl_batt  = make_label(scr, &lv_font_montserrat_28, COLOR_DIM,   395);
+    lv_label_set_text(s_lbl_wifi, "");   /* WiFi symbol appears once connected */
 
     tick_cb(NULL);                       /* paint immediately, don't wait 1s */
     lv_timer_create(tick_cb, 1000, NULL);
@@ -156,15 +194,20 @@ void app_main(void)
 
     seed_clock();
 
-    bsp_display_start();                  /* brings up panel, touch, LVGL task */
+    /* QSPI IO-path display (Ben Brown's watch-os) — proper flush with retries +
+     * 2-pixel rounding, replacing the BSP's broken RGB flush path. */
+    if (watch_display_start() == NULL) {
+        ESP_LOGE(TAG, "display init failed");
+        return;
+    }
 
     if (!axp2101_init()) {                /* battery / charging readout (read-only) */
         ESP_LOGW(TAG, "AXP2101 init failed — battery readout disabled");
     }
 
-    bsp_display_lock(0);                  /* LVGL is not thread-safe; take mutex */
+    watch_display_lock(0);               /* LVGL is not thread-safe; take mutex */
     build_watch_face();
-    bsp_display_unlock();
+    watch_display_unlock();
 
     ESP_LOGI(TAG, "Watch face up");
 

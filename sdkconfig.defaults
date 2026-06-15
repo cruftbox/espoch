@@ -68,6 +68,12 @@ CONFIG_LV_DRAW_SW_DRAW_UNIT_CNT=2
 # NOTE: CONFIG_LV_ATTRIBUTE_FAST_MEM_USE_IRAM is intentionally NOT set — it
 # triggers a conflicting-section-attribute error under GCC 15 (ESP-IDF v6).
 
+# --- Display buffer ---
+# Full-screen (502-line) LVGL buffer so any redraw flushes in ONE SPI strip.
+# The BSP's flush drops strips on multi-strip redraws (garbled pixels / ghost
+# rows that never clear); rendering the whole screen in a single strip avoids it.
+CONFIG_BSP_DISPLAY_LVGL_BUF_HEIGHT=502
+
 # --- LVGL fonts for the watch face (Stage 2) ---
 # Built-in Montserrat sizes used by the dashboard layout.
 CONFIG_LV_FONT_MONTSERRAT_20=y
