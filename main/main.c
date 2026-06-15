@@ -29,6 +29,7 @@
 #include "bsp/esp-bsp.h"
 #include "lvgl.h"
 #include "axp2101.h"
+#include "net_time.h"
 
 static const char *TAG = "espoch";
 
@@ -45,6 +46,7 @@ static lv_obj_t *s_lbl_day;
 static lv_obj_t *s_lbl_date;
 static lv_obj_t *s_lbl_steps;
 static lv_obj_t *s_lbl_batt;
+static lv_obj_t *s_lbl_wifi;
 
 /* Steps are still a placeholder until Stage 4 (QMI8658 IMU). */
 static int s_steps   = 2847;   /* TODO Stage 4: read from QMI8658 IMU */
@@ -94,6 +96,9 @@ static void tick_cb(lv_timer_t *timer)
         lv_label_set_text_fmt(s_lbl_batt, "BATT   %d%%", s_battery);
     }
     lv_obj_set_style_text_color(s_lbl_batt, lv_color_hex(batt_color(s_battery)), 0);
+
+    /* WiFi symbol shows only while connected. */
+    lv_label_set_text(s_lbl_wifi, net_time_is_connected() ? LV_SYMBOL_WIFI : "");
 }
 
 static lv_obj_t *make_label(lv_obj_t *parent, const lv_font_t *font,
@@ -119,18 +124,29 @@ static void build_watch_face(void)
     s_lbl_steps = make_label(scr, &lv_font_montserrat_28, COLOR_DIM,  LV_ALIGN_TOP_MID, 310);
     s_lbl_batt  = make_label(scr, &lv_font_montserrat_28, COLOR_DIM,  LV_ALIGN_TOP_MID, 370);
 
+    /* WiFi status symbol, top-right corner; empty until connected. */
+    s_lbl_wifi = lv_label_create(scr);
+    lv_obj_set_style_text_font(s_lbl_wifi, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(s_lbl_wifi, lv_color_hex(COLOR_DIM), 0);
+    lv_obj_align(s_lbl_wifi, LV_ALIGN_TOP_RIGHT, -16, 16);
+    lv_label_set_text(s_lbl_wifi, "");
+
     tick_cb(NULL);                       /* paint immediately, don't wait 1s */
     lv_timer_create(tick_cb, 1000, NULL);
 }
 
-/* Seed the system clock so the watch shows a plausible time before NTP exists.
- * 1781433720 = 2026-06-14 10:42:00 UTC. Replaced by real NTP time in Stage 3. */
+/* Set the timezone and seed the clock with a plausible value so the watch shows
+ * a sensible time immediately. Once WiFi connects, NTP overwrites it with the
+ * real time (displayed in the timezone set here).
+ *
+ * TZ = US Pacific with automatic daylight saving (PST/PDT).
+ * 1781433720 = 2026-06-14 10:42:00 UTC, just a placeholder until NTP syncs. */
 static void seed_clock(void)
 {
+    setenv("TZ", "PST8PDT,M3.2.0,M11.1.0", 1);
+    tzset();
     struct timeval tv = { .tv_sec = 1781433720, .tv_usec = 0 };
     settimeofday(&tv, NULL);
-    setenv("TZ", "UTC0", 1);             /* real timezone is configured in Stage 3 */
-    tzset();
 }
 
 void app_main(void)
@@ -151,4 +167,6 @@ void app_main(void)
     bsp_display_unlock();
 
     ESP_LOGI(TAG, "Watch face up");
+
+    net_time_start();                     /* WiFi + NTP; updates the clock async */
 }

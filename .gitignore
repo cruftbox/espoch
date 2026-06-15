@@ -12,3 +12,6 @@ managed_components/
 
 # macOS
 .DS_Store
+
+# WiFi credentials — keep the password off GitHub. Use wifi_secrets.h.example.
+main/wifi_secrets.h

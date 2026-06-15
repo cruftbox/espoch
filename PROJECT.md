@@ -6,7 +6,7 @@
 **Purchase:** https://www.waveshare.com/esp32-s3-touch-amoled-2.06.htm?sku=31957  
 **Wiki:** https://www.waveshare.com/wiki/ESP32-S3-Touch-AMOLED-2.06  
 **Price:** $31.99  
-**Status:** In hand — Stage 1 & Stage 2 firmware built, flashed, and running (2026-06-14)
+**Status:** In hand — Stages 1 & 2 complete; Stage 3 in progress (WiFi + NTP working). Last updated 2026-06-15.
 
 ### Key Specs
 
@@ -95,12 +95,27 @@ $env:IDF_PYTHON_ENV_PATH='C:\Espressif\tools\python\v6.0.1\venv'
 & $py "$env:IDF_PATH\tools\idf.py" -C 'C:\Users\micha\OneDrive\Code\ESPoch' -p COM3 flash
 ```
 
+### WiFi credentials
+
+Before building, set your network in `main/wifi_secrets.h` (copy it from
+`wifi_secrets.h.example` if it's missing):
+
+```c
+#define WIFI_SSID "your 2.4 GHz network name"
+#define WIFI_PASS "your password"
+```
+
+This file is **git-ignored**, so the password is never pushed to GitHub. The ESP32-S3 is
+2.4 GHz only. (A future Stage 3 step replaces this with on-device web setup.)
+
 ### Project layout
 
 | Path | Purpose |
 | ---- | ------- |
 | `main/main.c` | App entry + the LVGL watch-face UI |
 | `main/axp2101.cpp` / `axp2101.h` | Read-only AXP2101 battery/charging readout (C wrapper over XPowersLib) |
+| `main/net_time.c` / `net_time.h` | WiFi connection + NTP time sync |
+| `main/wifi_secrets.h` | WiFi credentials — **git-ignored**; copy from `wifi_secrets.h.example` |
 | `main/idf_component.yml` | Managed dependencies (LVGL, `espressif/usb`) |
 | `components/esp32_s3_touch_amoled_2_06/` | **Vendored, patched** Waveshare BSP (see notes below) |
 | `components/XPowersLib/` | Vendored AXP2101 power-management library (battery/charge readout) |
@@ -229,17 +244,19 @@ Note: Skip 30 seconds is a best-effort feature — Apple's AMS (Apple Media Serv
 - Amber on black, dashboard layout
 - Optimized for outdoor readability
 
-> Time is currently seeded to a fixed value at boot, so it ticks but is not the real
-> wall-clock time yet — that arrives with NTP in Stage 3. See **Build & Flash** and
+> The watch face also shows a WiFi symbol (top-right) once connected, and the clock
+> shows real NTP time after WiFi connects (see Stage 3). See **Build & Flash** and
 > **ESP-IDF v6 Compatibility Notes** below for how the firmware is built.
 
-### Stage 3 — NTP + OTA + Web Config
+### Stage 3 — NTP + OTA + Web Config 🔶 IN PROGRESS
 
-- WiFi connection with saved credentials
-- NTP time sync on boot and periodically
-- Keeps RTC accurate
-- OTA firmware updates over WiFi
-- Web configuration portal (WiFi credentials, timezone, settings)
+- ✅ WiFi connection (credentials in `main/wifi_secrets.h`, git-ignored)
+- ✅ NTP time sync on boot (SNTP → pool.ntp.org); timezone US Pacific (PST/PDT, auto DST)
+- ✅ WiFi status symbol on the watch face
+- ⬜ OTA firmware updates over WiFi (needs a two-slot OTA partition table)
+- ⬜ Web configuration portal (WiFi credentials, timezone, settings) — replaces the
+  hardcoded `wifi_secrets.h` with on-device setup
+- ⬜ Periodic re-sync / keep the PCF85063 RTC accurate
 - Build OTA early — makes all future stages easier to deploy
 
 ### Stage 4 — Step Counter
