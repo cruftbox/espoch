@@ -34,6 +34,7 @@
 #include "watch_display.h"
 #include "rtc_manager.h"
 #include "timezone_manager.h"
+#include "ota.h"
 
 static const char *TAG = "espoch";
 
@@ -228,5 +229,7 @@ void app_main(void)
 
     ESP_LOGI(TAG, "Watch face up");
 
+    ota_mark_valid();                     /* boot reached a healthy state — no rollback */
     net_time_start();                     /* WiFi + NTP; updates the clock async */
+    ota_start();                          /* background: check GitHub for a newer release */
 }
