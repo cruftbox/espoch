@@ -522,3 +522,118 @@ esp_err_t qmi8658_read_motion(qmi8658_motion_sample_t *out)
     out->gyro_dps[2] = (float)gz / k_gyro_lsb_per_dps;
     return ESP_OK;
 }
+
+/* ============================================================================
+ * Hardware pedometer (QMI8658 built-in step engine) — added for ESPoch.
+ * Register sequence per the QST QMI8658 datasheet and the reference
+ * implementation in lewisxhe/SensorLib (SensorQMI8658).
+ * ==========================================================================*/
+
+static const uint8_t REG_CTRL8      = 0x09U;
+static const uint8_t REG_CAL2_L     = 0x0DU;
+static const uint8_t REG_CAL2_H     = 0x0EU;
+static const uint8_t REG_CAL3_L     = 0x0FU;
+static const uint8_t REG_CAL3_H     = 0x10U;
+static const uint8_t REG_CAL4_L     = 0x11U;
+static const uint8_t REG_CAL4_H     = 0x12U;
+static const uint8_t REG_STEP_CNT_L = 0x5AU;
+static const uint8_t CTRL9_CMD_CONFIG_PEDOMETER = 0x0DU;
+static const uint8_t CTRL8_PEDO_EN  = 0x10U;   /* CTRL8 bit 4 */
+
+/* Issue a CTRL9 command and complete the handshake (wait done -> ACK -> clear). */
+static esp_err_t qmi_ctrl9_command(uint8_t cmd)
+{
+    esp_err_t err = qmi_write_u8(REG_CTRL9, cmd);
+    if (err != ESP_OK) {
+        return err;
+    }
+    qmi_wait_ctrl9_done(false);
+    err = qmi_write_u8(REG_CTRL9, CTRL9_CMD_ACK);
+    if (err != ESP_OK) {
+        return err;
+    }
+    qmi_wait_ctrl9_done(true);
+    return ESP_OK;
+}
+
+static esp_err_t qmi_write_u16(uint8_t reg_l, uint8_t reg_h, uint16_t v)
+{
+    esp_err_t err = qmi_write_u8(reg_l, (uint8_t)(v & 0xFFU));
+    if (err != ESP_OK) {
+        return err;
+    }
+    return qmi_write_u8(reg_h, (uint8_t)((v >> 8) & 0xFFU));
+}
+
+esp_err_t qmi8658_pedometer_enable(void)
+{
+    /* Strict "datasheet" profile — vendor-tuned to reject non-step vibration.
+     * entry_count = 8 means 8 gait steps must register before counting starts,
+     * which is what rejects hand movements. Timing params are in accel samples,
+     * scaled for the 250 Hz streaming ODR (4 ms/sample): 2000 ms -> 500, 300 -> 75. */
+    const uint16_t sample_count   = 50U;
+    const uint16_t peak_to_peak   = 100U;  /* mg */
+    const uint16_t peak_threshold = 116U;  /* mg */
+    const uint16_t time_up        = 500U;
+    const uint8_t  time_low       = 75U;
+    const uint8_t  entry_count    = 8U;
+    const uint8_t  fix_precision  = 0U;
+    const uint8_t  sig_count      = 1U;
+
+    /* Vendor flow configures the engine with the sensors briefly off. */
+    uint8_t ctrl7 = 0U;
+    qmi_read_u8(REG_CTRL7, &ctrl7);
+    qmi_write_u8(REG_CTRL7, 0x00U);
+
+    /* Phase 1 — peak parameters (CAL4 = 0x01/0x02 selects this sub-page). */
+    esp_err_t err = qmi_write_u16(REG_CAL1_L, REG_CAL1_H, sample_count);
+    if (err == ESP_OK) err = qmi_write_u16(REG_CAL2_L, REG_CAL2_H, peak_to_peak);
+    if (err == ESP_OK) err = qmi_write_u16(REG_CAL3_L, REG_CAL3_H, peak_threshold);
+    if (err == ESP_OK) err = qmi_write_u8(REG_CAL4_H, 0x01U);
+    if (err == ESP_OK) err = qmi_write_u8(REG_CAL4_L, 0x02U);
+    if (err == ESP_OK) err = qmi_ctrl9_command(CTRL9_CMD_CONFIG_PEDOMETER);
+
+    /* Phase 2 — timing parameters (CAL4 = 0x02/0x02). */
+    if (err == ESP_OK) err = qmi_write_u16(REG_CAL1_L, REG_CAL1_H, time_up);
+    if (err == ESP_OK) err = qmi_write_u8(REG_CAL2_L, time_low);
+    if (err == ESP_OK) err = qmi_write_u8(REG_CAL2_H, entry_count);
+    if (err == ESP_OK) err = qmi_write_u8(REG_CAL3_L, fix_precision);
+    if (err == ESP_OK) err = qmi_write_u8(REG_CAL3_H, sig_count);
+    if (err == ESP_OK) err = qmi_write_u8(REG_CAL4_H, 0x02U);
+    if (err == ESP_OK) err = qmi_write_u8(REG_CAL4_L, 0x02U);
+    if (err == ESP_OK) err = qmi_ctrl9_command(CTRL9_CMD_CONFIG_PEDOMETER);
+
+    /* Restore sensors, then toggle Pedo_EN 0->1 to start (and zero) the engine. */
+    qmi_write_u8(REG_CTRL7, ctrl7);
+    uint8_t ctrl8 = 0U;
+    qmi_read_u8(REG_CTRL8, &ctrl8);
+    qmi_write_u8(REG_CTRL8, (uint8_t)(ctrl8 & ~CTRL8_PEDO_EN));
+    qmi_read_u8(REG_CTRL8, &ctrl8);
+    err = qmi_write_u8(REG_CTRL8, (uint8_t)(ctrl8 | CTRL8_PEDO_EN));
+
+    if (err == ESP_OK) {
+        ESP_LOGI(TAG, "hardware pedometer enabled (entry_count=%u)", entry_count);
+    } else {
+        ESP_LOGE(TAG, "pedometer enable failed: %s", esp_err_to_name(err));
+    }
+    return err;
+}
+
+uint32_t qmi8658_pedometer_count(void)
+{
+    uint8_t b[3] = {0};
+    if (qmi_read(REG_STEP_CNT_L, b, sizeof(b)) != ESP_OK) {
+        return 0U;
+    }
+    return ((uint32_t)b[2] << 16) | ((uint32_t)b[1] << 8) | (uint32_t)b[0];
+}
+
+esp_err_t qmi8658_pedometer_reset(void)
+{
+    /* Toggling Pedo_EN 0->1 resets the step count (per datasheet). */
+    uint8_t ctrl8 = 0U;
+    qmi_read_u8(REG_CTRL8, &ctrl8);
+    qmi_write_u8(REG_CTRL8, (uint8_t)(ctrl8 & ~CTRL8_PEDO_EN));
+    qmi_read_u8(REG_CTRL8, &ctrl8);
+    return qmi_write_u8(REG_CTRL8, (uint8_t)(ctrl8 | CTRL8_PEDO_EN));
+}

@@ -69,3 +69,22 @@ bool qmi8658_streaming_active(void);
  * @return ESP_OK on success.
  */
 esp_err_t qmi8658_read_motion(qmi8658_motion_sample_t *out);
+
+/* --- Built-in hardware pedometer (step engine) --- */
+
+/**
+ * @brief Configure and start the QMI8658's hardware step counter.
+ * @note Requires the accelerometer to be running (call qmi8658_enable_streaming first).
+ * @return ESP_OK on success.
+ */
+esp_err_t qmi8658_pedometer_enable(void);
+
+/**
+ * @brief Read the current hardware step count (24-bit).
+ */
+uint32_t qmi8658_pedometer_count(void);
+
+/**
+ * @brief Reset the hardware step count to zero.
+ */
+esp_err_t qmi8658_pedometer_reset(void);
