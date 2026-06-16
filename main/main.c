@@ -36,6 +36,7 @@
 #include "rtc_manager.h"
 #include "timezone_manager.h"
 #include "ota.h"
+#include "step_counter.h"
 
 static const char *TAG = "espoch";
 
@@ -54,9 +55,6 @@ static lv_obj_t *s_lbl_steps;
 static lv_obj_t *s_lbl_batt;
 static lv_obj_t *s_lbl_wifi;
 static lv_obj_t *s_lbl_ver;
-
-/* Steps are still a placeholder until Stage 4 (QMI8658 IMU). */
-static int s_steps   = 2847;   /* TODO Stage 4: read from QMI8658 IMU */
 
 /* Battery is read live from the AXP2101; this caches the last good value in
  * case a read fails. */
@@ -118,9 +116,21 @@ static void tick_cb(lv_timer_t *timer)
         strcpy(prev_date, buf);
     }
 
-    if (s_steps != prev_steps) {
-        lv_label_set_text_fmt(s_lbl_steps, "STEPS   %d,%03d", s_steps / 1000, s_steps % 1000);
-        prev_steps = s_steps;
+    /* Reset the daily step count at midnight (when the day-of-year rolls over). */
+    static int prev_yday = -1;
+    if (prev_yday >= 0 && t.tm_yday != prev_yday) {
+        step_counter_reset();
+    }
+    prev_yday = t.tm_yday;
+
+    int steps = step_counter_get();
+    if (steps != prev_steps) {
+        if (steps >= 1000) {
+            lv_label_set_text_fmt(s_lbl_steps, "STEPS   %d,%03d", steps / 1000, steps % 1000);
+        } else {
+            lv_label_set_text_fmt(s_lbl_steps, "STEPS   %d", steps);
+        }
+        prev_steps = steps;
     }
 
     /* Live battery + charging status from the AXP2101. */
@@ -234,6 +244,7 @@ void app_main(void)
 
     ESP_LOGI(TAG, "Watch face up");
 
+    step_counter_start();                 /* QMI8658 IMU step counting */
     ota_mark_valid();                     /* boot reached a healthy state — no rollback */
     net_time_start();                     /* WiFi + NTP; updates the clock async */
     ota_start();                          /* background: check GitHub for a newer release */

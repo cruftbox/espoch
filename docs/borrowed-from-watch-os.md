@@ -12,6 +12,7 @@ need. Borrowed files carry an attribution note in their header and are adapted f
 | `main/watch_display.c/.h` | `main/display/watch_display.*` | QSPI IO display path — fixes the BSP's broken RGB flush (ghosting / underflow) | Stage 3 |
 | `main/rtc_manager.c/.h` | `main/time/rtc_manager.*` | PCF85063 hardware RTC — time survives reboots | Stage 3 |
 | `main/timezone_manager.c/.h` | `main/time/timezone_manager.*` | POSIX timezone table persisted in NVS | Stage 3 |
+| `main/qmi8658.c/.h` | `main/sensors/qmi8658.*` | QMI8658 IMU driver (motion read; also has wake-on-motion for later raise-to-wake). ESPoch's step counter (`step_counter.c`) is built on top. | Stage 4 |
 
 ## Planned / candidates (backlog — don't forget)
 
@@ -22,7 +23,6 @@ This is the running list of code we want to pull in during later phases. Move a 
 | --- | --- | --- |
 | `net/wifi_manager.*`, `net/wifi_provision.*`, `apps/wifi_menu.*` | On-device WiFi setup (scan/connect, saved creds, UI) — retires hardcoded `wifi_secrets.h` | Stage 3, **needs app/menu framework** |
 | `time/ntp_sync.*` | Manual/periodic NTP→RTC sync | Stage 3 (compare with our `net_time.c`) |
-| `sensors/qmi8658.*` | IMU step counting | Stage 4 |
 | `power/battery_manager.*`, `power/power_manager.*` | Battery + sleep/wake/screen-off | Stage 8 |
 | `input/boot_button.*` | Button handling (PWR/BOOT press map) | Stage 5 |
 | `net/ble_scanner.*` | NimBLE plumbing reference | Stage 5 (ANCS/AMS) |

@@ -4,6 +4,8 @@
 #include "ota.h"
 
 #include <string.h>
+#include <stdio.h>
+#include <stdbool.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -21,6 +23,21 @@ static const char *TAG = "ota";
 /* GitHub's "latest release" always resolves to the newest published release, and
  * /download/<asset> serves that release's asset — so this URL self-updates. */
 #define OTA_URL "https://github.com/cruftbox/espoch/releases/latest/download/espoch.bin"
+
+/* True if version "avail" (X.Y.Z) is strictly newer than "running" — so OTA only
+ * moves forward, never downgrades. */
+static bool version_is_newer(const char *avail, const char *running)
+{
+    int a[3] = {0}, r[3] = {0};
+    sscanf(avail, "%d.%d.%d", &a[0], &a[1], &a[2]);
+    sscanf(running, "%d.%d.%d", &r[0], &r[1], &r[2]);
+    for (int i = 0; i < 3; i++) {
+        if (a[i] != r[i]) {
+            return a[i] > r[i];
+        }
+    }
+    return false;
+}
 
 static void ota_task(void *arg)
 {
@@ -67,8 +84,8 @@ static void ota_task(void *arg)
     if (esp_https_ota_get_img_desc(handle, &avail) == ESP_OK) {
         const esp_app_desc_t *running = esp_app_get_description();
         ESP_LOGI(TAG, "running '%s', available '%s'", running->version, avail.version);
-        if (strncmp(running->version, avail.version, sizeof(avail.version)) == 0) {
-            ESP_LOGI(TAG, "already up to date");
+        if (!version_is_newer(avail.version, running->version)) {
+            ESP_LOGI(TAG, "no newer release available");
             esp_https_ota_abort(handle);
             vTaskDelete(NULL);
             return;
