@@ -44,6 +44,11 @@ static void ota_task(void *arg)
         .crt_bundle_attach = esp_crt_bundle_attach,
         .timeout_ms = 20000,
         .keep_alive_enable = true,
+        /* GitHub redirects release downloads to a very long signed CDN URL. The
+         * default 512-byte header/request buffers can't hold it, so enlarge them
+         * or the redirected connection fails to open. */
+        .buffer_size = 4096,
+        .buffer_size_tx = 4096,
     };
     esp_https_ota_config_t ota_cfg = {
         .http_config = &http_cfg,
